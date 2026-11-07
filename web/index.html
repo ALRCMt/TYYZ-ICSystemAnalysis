@@ -101,6 +101,7 @@
         <button id="btnDisconnect" class="ghost">断开</button>
         <button id="btnReset" class="ghost" title="强制释放浏览器里所有已授权的串口">重置串口</button>
         <button id="btnDiag" class="ghost">串口诊断</button>
+        <button id="btnNfcRead" class="ghost hidden" title="使用手机自带 NFC 读卡（只读）">手机 NFC 读卡</button>
         <label class="muted">波特率
           <select id="baud">
             <option value="115200" selected>115200</option>
@@ -502,6 +503,55 @@ async function readBlock(p, tg, block){
 
 /* ================= 交互 ================= */
 let port = null, pn = null, busy = false, stopFlag = false, BUSY = false;
+
+/* ================= 安卓手机 NFC（只读，由 App 注入） ================= */
+const AndroidNfc = (typeof window !== "undefined" && window.AndroidNfc) ? window.AndroidNfc : null;
+const btnNfcRead = document.getElementById("btnNfcRead");
+if(AndroidNfc){
+  btnNfcRead.classList.remove("hidden");
+}
+
+window.onAndroidNfcResult = function(jsonStr){
+  let res;
+  try{ res = JSON.parse(jsonStr); }
+  catch(e){ log("手机 NFC 返回数据解析失败"); btnNfcRead.disabled = false; return; }
+  if(res.error){
+    log("手机 NFC 读卡失败：" + res.error);
+    btnNfcRead.disabled = false;
+    return;
+  }
+  const bytes = new Uint8Array(1024);
+  const blocks = res.blocks || {};
+  for(const key of Object.keys(blocks)){
+    const bi = parseInt(key, 10);
+    const data = fromHex(blocks[key]);
+    if(bi >= 0 && bi < 64 && data.length === 16) bytes.set(data, bi * 16);
+  }
+  const r = parseCard(Array.from(bytes));
+  render(document.getElementById("result"), r);
+  lastReadDump = new Uint8Array(bytes);
+  document.getElementById("btnEditFromCard").disabled = false;
+  log("手机 NFC 读取完成：UID=" + toHex(Array.from(bytes.slice(0,4))) + "，读到 " + (res.readCount || 0) + " 块");
+  (res.errors || []).forEach(x => log("  " + x));
+  btnNfcRead.disabled = false;
+};
+
+btnNfcRead.addEventListener("click", () => {
+  if(!AndroidNfc){ log("当前不是安卓 App 环境"); return; }
+  let available = false;
+  try{ available = !!AndroidNfc.isAvailable(); }catch(e){}
+  if(!available){ log("手机 NFC 不可用或未开启"); return; }
+  const k8 = document.getElementById("k8").value.replace(/[^0-9a-fA-F]/g,"");
+  const k9 = document.getElementById("k9").value.replace(/[^0-9a-fA-F]/g,"");
+  btnNfcRead.disabled = true;
+  log("请把卡片贴到手机 NFC 感应区…");
+  try{
+    AndroidNfc.startRead(JSON.stringify({ k8: k8, k9: k9 }));
+  }catch(e){
+    log("调用手机 NFC 失败：" + e.message);
+    btnNfcRead.disabled = false;
+  }
+});
 
 function setConnState(text, cls){
   const el = document.getElementById("connState");
