@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>TYYZ 校园卡余额读取</title>
+<title>TYYZ 校园卡数据读写</title>
 <style>
   :root{
     --bg:#0f1420; --panel:#171e2e; --panel2:#1e2739; --line:#2a3550;
@@ -57,7 +57,6 @@
   #log:empty{display:none}
   #log{border-top:1px dashed var(--line);padding-top:10px}
   #result:empty{display:none}
-  #result2:empty{display:none}
   .row>button{white-space:nowrap}
   /* ---- 文件上传 ---- */
   .filebtn{display:inline-flex;align-items:center;gap:8px;background:var(--panel2);
@@ -68,6 +67,14 @@
   .hexbox{width:100%;font-family:Consolas,ui-monospace,monospace;font-size:12px;line-height:1.5;resize:vertical}
   .dropzone{border:1px dashed transparent;border-radius:12px;transition:border-color .2s,background .2s}
   .dropzone.over{border-color:var(--accent);background:rgba(77,163,255,.06)}
+
+  .grid2{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:10px}
+  .grid2 label{display:flex;flex-direction:column;gap:4px;font-size:12px;color:var(--muted)}
+  .grid2 input,.grid2 select{width:100%}
+
+  .bar{height:14px;background:var(--panel2);border:1px solid var(--line);border-radius:999px;overflow:hidden}
+  .bar>div{height:100%;width:0;background:linear-gradient(90deg,#3ddc84,#4da3ff);transition:width .25s}
+  #writeLog{white-space:pre-wrap;font-size:12px;max-height:180px;overflow:auto}
 
   @media (max-width:600px){
     body{padding:14px}
@@ -80,15 +87,15 @@
 </head>
 <body>
 <div class="wrap">
-  <h1>TYYZ 校园卡余额读取</h1>
-  <div class="sub">Chrome / Edge · PN532（串口 115200）· 只读本卡，请勿用于非法用途</div>
+  <h1>TYYZ 校园卡余额读写</h1>
+  <div class="sub">Chrome / Edge · PN532（串口 115200）· 学习交流用</div>
 
   <div class="tabs">
-    <div class="tab active" data-tab="reader">读卡器</div>
-    <div class="tab" data-tab="dump">离线 dump</div>
+    <div class="tab active" data-tab="reader">读卡 / 解析</div>
+    <div class="tab" data-tab="edit">编辑 dump</div>
   </div>
 
-  <!-- ============ 读卡器 ============ -->
+  <!-- ============ 读卡 / 解析 ============ -->
   <div id="tab-reader">
     <div class="panel">
       <div class="row">
@@ -119,11 +126,6 @@
       </div>
       <div id="log" style="margin-top:12px"></div>
     </div>
-    <div id="result"></div>
-  </div>
-
-  <!-- ============ 离线 dump ============ -->
-  <div id="tab-dump" class="hidden">
     <div class="panel">
       <div id="dropzone" class="dropzone">
         <div class="row">
@@ -140,7 +142,84 @@
         </div>
       </div>
     </div>
-    <div id="result2"></div>
+    <div id="result"></div>
+  </div>
+
+  <!-- ============ 编辑 dump ============ -->
+  <div id="tab-edit" class="hidden">
+    <div class="panel">
+      <div class="row">
+        <label class="filebtn" for="editFile">载入 dump</label>
+        <input type="file" id="editFile" accept=".dump,.bin,.dat" class="hidden-file">
+        <button id="btnEditFromCard" class="ghost" disabled>载入刚才读到的卡</button>
+        <button id="btnEditLoadHex" class="ghost">载入下方 hex</button>
+        <span id="editStatus" class="muted">未载入文件</span>
+      </div>
+      <textarea id="editHex" rows="3" class="hexbox" style="margin-top:10px" placeholder="或者在这里粘贴 1024 字节的 hex"></textarea>
+    </div>
+
+    <div class="panel" id="editForm" style="display:none">
+      <div class="grid2">
+        <label>水控1 余额（元）<input id="e_w1" type="text" placeholder="0 ~ 655.35"></label>
+        <label>水控2 余额（元）<input id="e_w2" type="text" placeholder="0 ~ 655.35"></label>
+        <label>水控2 交易次数 b4<input id="e_w2count" type="text"></label>
+        <label>水控2 写计数 b10（hex）<input id="e_w2counter" type="text"></label>
+        <label>清空扇区（如 2,3）<input id="e_clear" type="text" placeholder="留空 = 不清空"></label>
+        <label>模拟消费（元）<input id="e_spend" type="text" placeholder="留空 = 不做交易"></label>
+        <label>模拟充值（元）<input id="e_topup" type="text" placeholder="留空 = 不充值"></label>
+      </div>
+
+      <div class="label" style="margin:16px 0 8px">消费钱包</div>
+      <div class="grid2">
+        <label>记录扇区
+          <select id="e_sector">
+            <option value="older">older（较旧，模拟下一笔）</option>
+            <option value="newest">newest（最新）</option>
+            <option value="2">S2</option>
+            <option value="3">S3</option>
+          </select>
+        </label>
+        <label>余额（元）<input id="e_bal" type="text"></label>
+        <label>现金（元）<input id="e_cash" type="text" placeholder="0 ~ 25.5"></label>
+        <label>当日累计（元）<input id="e_day" type="text"></label>
+        <label>时间<input id="e_time" type="text" placeholder="YYYY-MM-DD HH:MM:SS"></label>
+        <label>记录序号 B<input id="e_seq" type="text"></label>
+      </div>
+
+      <div class="label" style="margin:16px 0 8px">卡面信息（Sector 1）</div>
+      <div class="grid2">
+        <label>姓名<input id="e_name" type="text" placeholder="GBK，最多 4 个汉字"></label>
+        <label>卡号<input id="e_cardno" type="text"></label>
+        <label>级别（如 0x09）<input id="e_role" type="text"></label>
+        <label>开卡日期<input id="e_date" type="text" placeholder="YYYY-MM-DD"></label>
+      </div>
+
+      <div class="row" style="margin-top:16px">
+        <label class="muted" style="display:flex;gap:8px;align-items:center;font-size:13px">输出文件名
+          <input id="e_filename" type="text" style="width:300px" placeholder="例如 新卡.dump">
+        </label>
+      </div>
+      <div class="row" style="margin-top:10px">
+        <button id="btnEditApply">生成新 dump</button>
+        <button id="btnEditDownload" class="ghost" disabled>下载 .dump</button>
+        <button id="btnEditReset" class="ghost">还原到载入状态</button>
+        <span id="editMsg" class="muted"></span>
+      </div>
+    </div>
+
+    <div class="panel" id="writePanel" style="display:none">
+      <div class="label" style="margin-bottom:8px">写入卡片（整块 16 字节覆盖，仅用于测试卡）</div>
+      <div class="row">
+        <label class="muted"><input type="checkbox" id="w_confirm"> 我确认这是测试卡</label>
+        <label class="muted">扇区 <input id="w_sectors" value="1,2,3,4,8,9" style="width:150px"></label>
+        <label class="muted"><input type="checkbox" id="w_trailer"> 同时写尾块（危险，可能锁卡）</label>
+        <button id="btnWrite" disabled>写入卡片</button>
+      </div>
+      <div class="muted" style="font-size:12px;margin-top:8px">S8/S9 密钥沿用「读卡 / 解析」页的输入框；留空则跳过该扇区。写入的是当前 <b>editBytes</b>（生成后的 dump），每个块 16 字节<b>直接整体覆盖</b>，不关心卡上原内容。</div>
+      <div class="bar" style="margin-top:12px"><div id="writeBar"></div></div>
+      <div id="writeLog" class="muted" style="margin-top:10px"></div>
+    </div>
+    <div id="result3"></div>
   </div>
 </div>
 
@@ -684,7 +763,9 @@ document.getElementById("btnRead").addEventListener("click", async () => {
     }
     const r = parseCard(Array.from(dump));
     render(document.getElementById("result"), r);
-    log("完成");
+    lastReadDump = new Uint8Array(dump);
+    document.getElementById("btnEditFromCard").disabled = false;
+    log("完成（已保存到「编辑 dump」页可直接载入）");
   }catch(e){
     log("读取失败: " + e.message);
   }finally{
@@ -715,7 +796,7 @@ async function loadDumpFile(file){
       return;
     }
     const r = parseCard(Array.from(buf.slice(0,1024)));
-    render(document.getElementById("result2"), r);
+    render(document.getElementById("result"), r);
     dumpMsg("解析成功：UID " + toHex(r.uid) + (buf.length > 1024 ? "（只取前 1024 字节）" : ""), "ok");
   }catch(e){
     dumpMsg("读取失败: " + e.message, "err");
@@ -748,7 +829,7 @@ document.getElementById("btnParseHex").addEventListener("click", () => {
   }
   try{
     const r = parseCard(bytes.slice(0,1024));
-    render(document.getElementById("result2"), r);
+    render(document.getElementById("result"), r);
     dumpMsg("解析成功：UID " + toHex(r.uid), "ok");
   }catch(e){
     dumpMsg("解析失败: " + e.message, "err");
@@ -760,7 +841,471 @@ document.getElementById("btnClearDump").addEventListener("click", () => {
   hexInput.value = "";
   fileNameEl.textContent = "未选择文件（也可以把文件拖进来）";
   dumpMsg("");
-  document.getElementById("result2").innerHTML = "";
+  document.getElementById("result").innerHTML = "";
+});
+
+/* ================= 编辑 dump（浏览器内完成） ================= */
+let editBase = null, editBytes = null, editSourceName = "card.dump";
+let lastReadDump = null;
+
+const edMsgEl = () => document.getElementById("editMsg");
+function edMsg(text, cls){ const el = edMsgEl(); el.textContent = text; el.className = cls || "muted"; }
+function edBlk(d,s,b){ return d.slice(s*64+b*16, s*64+b*16+16); }
+function edPut(d,s,b,arr){ d.set(arr, s*64+b*16); }
+function edXor(data){ let x=0; for(const b of data) x ^= b; return x; }
+
+/* GBK 编码：用 TextDecoder 反查表生成（只需要 ~2 万次解码，首次略慢） */
+let _gbkMap = null;
+function gbkMap(){
+  if(_gbkMap) return _gbkMap;
+  const dec = new TextDecoder("gbk");
+  const map = new Map();
+  for(let hi=0x81; hi<=0xFE; hi++){
+    for(let lo=0x40; lo<=0xFE; lo++){
+      if(lo === 0x7F) continue;
+      let ch;
+      try{ ch = dec.decode(new Uint8Array([hi,lo])); }catch(e){ continue; }
+      if(ch && ch.length === 1 && ch !== "\uFFFD" && !map.has(ch)) map.set(ch, [hi,lo]);
+    }
+  }
+  _gbkMap = map;
+  return map;
+}
+function gbkEncode(str){
+  const map = gbkMap();
+  const out = [];
+  for(const ch of String(str)){
+    const code = ch.codePointAt(0);
+    if(code < 0x80){ out.push(code); continue; }
+    const pair = map.get(ch);
+    if(!pair) throw new Error("字符无法用 GBK 编码：" + ch);
+    out.push(pair[0], pair[1]);
+  }
+  return out;
+}
+
+function edWater1(d, yuan){
+  const fen = Math.round(Number(yuan) * 100);
+  if(!(fen >= 0 && fen <= 65535)) throw new Error("水控1 金额范围 0 ~ 655.35 元");
+  const bal = [(fen>>8)&0xFF, fen&0xFF];
+  const crc = crc16ccitt(bal) ^ 0x20F5;
+  const blk = new Uint8Array([0x10,0xAC,0x0C,0xAF, bal[0],bal[1], (crc>>8)&0xFF, crc&0xFF, 0,0,0,0,0,0,0,0]);
+  edPut(d,9,1,blk); edPut(d,9,2,blk);
+  return fen;
+}
+
+function edWater2(d, yuan, count, counter){
+  const fen = Math.round(Number(yuan) * 100);
+  if(!(fen >= 0 && fen <= 65535)) throw new Error("水控2 金额范围 0 ~ 655.35 元");
+  const b = Array.from(edBlk(d,4,0));
+  b[2] = fen & 0xFF; b[3] = (fen>>8)&0xFF;
+  if(count !== null && count !== undefined) b[4] = count & 0xFF;
+  if(counter !== null && counter !== undefined) b[10] = counter & 0xFF;
+  b[1] = (b[2] + b[3] + b[4]) & 0xFF;
+  b[5] = (~b[1]) & 0xFF;
+  let x = 0; for(let i=1;i<15;i++) x ^= b[i];
+  b[0] = x;
+  b[13] = (b[11] === 1) ? ((b[10] + 1) & 0xFF) : b[10];
+  let sum = 0; for(let i=1;i<15;i++) sum += b[i];
+  b[15] = (~sum) & 0xFF;
+  edPut(d,4,0,new Uint8Array(b));
+  return fen;
+}
+
+function edClearSectors(d, secs){
+  for(const s of secs){
+    if(!(s >= 0 && s <= 15)) throw new Error("扇区号超出 0~15：" + s);
+    for(let b=0;b<3;b++) edPut(d,s,b,new Uint8Array(16));
+  }
+}
+
+function edWalletRecs(d){
+  const out = {};
+  for(const s of [2,3]){
+    const b0 = edBlk(d,s,0), b1 = edBlk(d,s,1);
+    out[s] = { cash: b0[3], balance: be32(Array.from(b0),4), seq: be32(Array.from(b0),8),
+               time: [b1[0],b1[1],b1[2],b1[3],b1[4],b1[5]], day: be16(Array.from(b1),9) };
+  }
+  return out;
+}
+
+function edWriteWallet(d, sector, rec){
+  const b0 = Array.from(edBlk(d,sector,0));
+  const b1 = Array.from(edBlk(d,sector,1));
+  b0[3] = rec.cash & 0xFF;
+  const bal = rec.balance >>> 0, seq = rec.seq >>> 0;
+  b0[4]=(bal>>>24)&0xFF; b0[5]=(bal>>>16)&0xFF; b0[6]=(bal>>>8)&0xFF; b0[7]=bal&0xFF;
+  b0[8]=(seq>>>24)&0xFF; b0[9]=(seq>>>16)&0xFF; b0[10]=(seq>>>8)&0xFF; b0[11]=seq&0xFF;
+  for(let i=0;i<6;i++) b1[i] = rec.time[i];
+  b1[9] = (rec.day>>8)&0xFF; b1[10] = rec.day&0xFF;
+  edPut(d,sector,0,new Uint8Array(b0));
+  edPut(d,sector,1,new Uint8Array(b1));
+}
+
+function edTimeBytes(str){
+  const m = String(str).trim().match(/^(\d{4})-(\d{1,2})-(\d{1,2})[ T](\d{1,2}):(\d{1,2}):(\d{1,2})$/);
+  if(!m) throw new Error("时间格式应为 YYYY-MM-DD HH:MM:SS");
+  const y = Number(m[1]) - 2000;
+  if(y < 0 || y > 255) throw new Error("年份超出范围");
+  return [y, +m[2], +m[3], +m[4], +m[5], +m[6]];
+}
+function edDateBytes(str){
+  const m = String(str).trim().match(/^(\d{4})-(\d{1,2})-(\d{1,2})$/);
+  if(!m) throw new Error("日期格式应为 YYYY-MM-DD");
+  return [Number(m[1]) - 2000, +m[2], +m[3]];
+}
+
+function edSetInfo(d, name, cardno, role, dateStr){
+  const b0 = Array.from(edBlk(d,1,0));
+  const b1 = Array.from(edBlk(d,1,1));
+  if(name){
+    const nb = gbkEncode(name);
+    if(nb.length > 8) throw new Error("姓名超过 8 字节（约 4 个汉字）");
+    for(let i=0;i<8;i++) b0[5+i] = i < nb.length ? nb[i] : 0x20;
+  }
+  if(cardno !== null && cardno !== undefined){
+    if(!(cardno >= 0 && cardno <= 0xFFFFFF)) throw new Error("卡号范围 0 ~ 16777215");
+    b0[1] = (cardno>>16)&0xFF; b0[2] = (cardno>>8)&0xFF; b0[3] = cardno&0xFF;
+  }
+  if(role !== null && role !== undefined){
+    if(!(role >= 0 && role <= 255)) throw new Error("级别范围 0 ~ 255");
+    b0[4] = role & 0xFF;
+  }
+  if(dateStr){
+    const db = edDateBytes(dateStr);
+    b1[0]=db[0]; b1[1]=db[1]; b1[2]=db[2];
+  }
+  edPut(d,1,0,new Uint8Array(b0));
+  edPut(d,1,1,new Uint8Array(b1));
+}
+
+/* ---- 载入 / 填写表单 ---- */
+function edLoad(bytes, name){
+  if(bytes.length < 1024) throw new Error("需要 1024 字节，当前 " + bytes.length);
+  editBase = new Uint8Array(bytes.slice(0,1024));
+  editBytes = new Uint8Array(editBase);
+  editSourceName = name || "card.dump";
+  document.getElementById("editStatus").textContent = "已载入：" + editSourceName;
+  const baseName = String(editSourceName).replace(/\.(dump|bin|dat)$/i, "");
+  document.getElementById("e_filename").value = baseName + "_edited.dump";
+  document.getElementById("editForm").style.display = "";
+  document.getElementById("editHex").value = "";
+  edFillForm(parseCard(Array.from(editBase)));
+  document.getElementById("btnEditDownload").disabled = true;
+  document.getElementById("writePanel").style.display = "";
+  document.getElementById("btnWrite").disabled = !document.getElementById("w_confirm").checked;
+  edMsg("修改下面的字段后点「生成新 dump」");
+  render(document.getElementById("result3"), parseCard(Array.from(editBase)));
+}
+
+function edFillForm(r){
+  const w = r.wallet.current;
+  const older = r.wallet.older;
+  const setV = (id, v) => { document.getElementById(id).value = v; };
+  setV("e_w1", r.w1 ? (r.w1.balance/100).toFixed(2) : "");
+  setV("e_w2", (r.w2.balance/100).toFixed(2));
+  setV("e_w2count", r.w2.b4);
+  setV("e_w2counter", r.w2.b10.toString(16).toUpperCase().padStart(2,"0"));
+  setV("e_clear", "");
+  setV("e_spend", "");
+  setV("e_topup", "");
+  setV("e_bal", (older.balance/10).toFixed(1));
+  setV("e_cash", (older.cash/10).toFixed(1));
+  setV("e_day", (older.dayTotal/10).toFixed(1));
+  setV("e_time", older.time);
+  setV("e_seq", older.seq);
+  setV("e_name", r.info.name || "");
+  setV("e_cardno", r.info.cardno);
+  setV("e_role", "0x" + r.info.role.toString(16).toUpperCase().padStart(2,"0"));
+  setV("e_date", r.info.openDate);
+  document.getElementById("e_sector").value = "older";
+}
+
+/* ---- 应用修改 ---- */
+function edApply(){
+  if(!editBytes){ edMsg("请先载入 dump", "err"); return; }
+  try{
+    const d = new Uint8Array(editBytes);
+    const changes = [];
+
+    const w1v = document.getElementById("e_w1").value.trim();
+    if(w1v !== ""){ edWater1(d, w1v); changes.push("水控1"); }
+
+    const w2v = document.getElementById("e_w2").value.trim();
+    if(w2v !== ""){
+      const cnt = document.getElementById("e_w2count").value.trim();
+      const ctr = document.getElementById("e_w2counter").value.trim();
+      edWater2(d, w2v,
+        cnt === "" ? null : parseInt(cnt,10),
+        ctr === "" ? null : parseInt(ctr,16));
+      changes.push("水控2");
+    }
+
+    const spend = document.getElementById("e_spend").value.trim();
+    const topup = document.getElementById("e_topup").value.trim();
+    if(spend !== "" && topup !== "") throw new Error("消费和充值不能同时填");
+    if(spend !== "" || topup !== ""){
+      const recs = edWalletRecs(d);
+      const newest = recs[2].seq > recs[3].seq ? 2 : 3;
+      const target = newest === 2 ? 3 : 2;
+      const rec = Object.assign({}, recs[newest]);
+      const delta = Math.round(Number(spend !== "" ? spend : topup) * 10);
+      if(!(delta >= 0)) throw new Error("金额不能为负");
+      if(spend !== ""){
+        rec.balance -= delta;
+        if(rec.balance < 0) throw new Error("余额不足，扣款后为负");
+        rec.day += delta;
+      }else{
+        rec.balance += delta;
+      }
+      rec.seq = Math.max(recs[2].seq, recs[3].seq) + 1;
+      const tv = document.getElementById("e_time").value.trim();
+      rec.time = tv !== "" ? edTimeBytes(tv) : edTimeBytes(new Date().toISOString().slice(0,19).replace("T"," "));
+      edWriteWallet(d, target, rec);
+      changes.push(spend !== "" ? ("消费 " + spend + " 元") : ("充值 " + topup + " 元"));
+    }else{
+      const recs = edWalletRecs(d);
+      const newest = recs[2].seq > recs[3].seq ? 2 : 3;
+      const sel = document.getElementById("e_sector").value;
+      const sector = sel === "older" ? (newest === 2 ? 3 : 2) : (sel === "newest" ? newest : Number(sel));
+      const rec = Object.assign({}, recs[sector]);
+      const bal = document.getElementById("e_bal").value.trim();
+      const cash = document.getElementById("e_cash").value.trim();
+      const day = document.getElementById("e_day").value.trim();
+      const timev = document.getElementById("e_time").value.trim();
+      const seqv = document.getElementById("e_seq").value.trim();
+      if(bal !== "") rec.balance = Math.round(Number(bal) * 10);
+      if(cash !== "") rec.cash = Math.round(Number(cash) * 10);
+      if(day !== "") rec.day = Math.round(Number(day) * 10);
+      if(timev !== "") rec.time = edTimeBytes(timev);
+      if(seqv !== "") rec.seq = parseInt(seqv,10);
+      if(rec.balance < 0) throw new Error("余额不能为负");
+      if(rec.cash < 0 || rec.cash > 255) throw new Error("现金范围 0 ~ 25.5 元");
+      if(rec.day < 0 || rec.day > 65535) throw new Error("当日累计范围 0 ~ 6553.5 元");
+      edWriteWallet(d, sector, rec);
+      changes.push("钱包（S" + sector + "）");
+    }
+
+    const name = document.getElementById("e_name").value.trim();
+    const cardno = document.getElementById("e_cardno").value.trim();
+    const role = document.getElementById("e_role").value.trim();
+    const datev = document.getElementById("e_date").value.trim();
+    if(name || cardno || role || datev){
+      edSetInfo(d,
+        name || null,
+        cardno === "" ? null : parseInt(cardno,10),
+        role === "" ? null : Number(role.toLowerCase().startsWith("0x") ? parseInt(role,16) : parseInt(role,10)),
+        datev || null);
+      changes.push("卡面信息");
+    }
+
+    // 清空扇区放在最后，避免被前面的钱包写入覆盖
+    const clear = document.getElementById("e_clear").value.trim();
+    if(clear){
+      const secs = clear.split(/[,，\s]+/).filter(x => x !== "").map(x => parseInt(x,10));
+      if(secs.some(x => isNaN(x))) throw new Error("清空扇区格式：2,3");
+      edClearSectors(d, secs);
+      changes.push("清空扇区 " + secs.join(","));
+    }
+
+    editBytes = d;
+    const r = parseCard(Array.from(d));
+    render(document.getElementById("result3"), r);
+    document.getElementById("btnEditDownload").disabled = false;
+    edMsg("已生成：" + changes.join("、") + "（可下载）", "ok");
+  }catch(e){
+    edMsg("错误：" + e.message, "err");
+  }
+}
+
+/* ---- 事件 ---- */
+document.getElementById("editFile").addEventListener("change", async ev => {
+  const f = ev.target.files[0]; if(!f) return;
+  try{
+    const buf = new Uint8Array(await f.arrayBuffer());
+    edLoad(buf, f.name);
+  }catch(e){ edMsg("载入失败：" + e.message, "err"); }
+  ev.target.value = "";
+});
+
+document.getElementById("btnEditLoadHex").addEventListener("click", () => {
+  try{
+    const bytes = new Uint8Array(fromHex(document.getElementById("editHex").value));
+    edLoad(bytes, "hex.dump");
+  }catch(e){ edMsg("载入失败：" + e.message, "err"); }
+});
+
+document.getElementById("btnEditFromCard").addEventListener("click", () => {
+  if(!lastReadDump){ edMsg("还没有从读卡器读到卡", "err"); return; }
+  edLoad(lastReadDump, "读卡器.dump");
+});
+
+document.getElementById("btnEditApply").addEventListener("click", edApply);
+document.getElementById("btnEditReset").addEventListener("click", () => {
+  if(!editBase){ edMsg("请先载入 dump", "err"); return; }
+  editBytes = new Uint8Array(editBase);
+  edFillForm(parseCard(Array.from(editBase)));
+  render(document.getElementById("result3"), parseCard(Array.from(editBase)));
+  document.getElementById("btnEditDownload").disabled = true;
+  edMsg("已还原到载入状态");
+});
+
+document.getElementById("btnEditDownload").addEventListener("click", () => {
+  if(!editBytes){ edMsg("请先生成", "err"); return; }
+  let fileName = document.getElementById("e_filename").value.trim();
+  if(!fileName) fileName = "out.dump";
+  if(!/\.(dump|bin)$/i.test(fileName)) fileName += ".dump";
+  const blob = new Blob([editBytes], {type:"application/octet-stream"});
+  const a = document.createElement("a");
+  a.href = URL.createObjectURL(blob);
+  a.download = fileName;
+  document.body.appendChild(a); a.click(); a.remove();
+  setTimeout(()=>URL.revokeObjectURL(a.href), 1000);
+  edMsg("已下载：" + a.download, "ok");
+});
+
+/* ================= 写卡（PN532 0xA0 写块） ================= */
+let writing = false;
+
+function writeLog(text, cls){
+  const el = document.getElementById("writeLog");
+  const t = new Date().toLocaleTimeString();
+  el.textContent += `[${t}] ${text}\n`;
+  el.scrollTop = el.scrollHeight;
+  if(cls) el.className = "muted " + cls;
+}
+function setWriteProgress(pct){
+  document.getElementById("writeBar").style.width = Math.max(0, Math.min(100, pct)) + "%";
+}
+
+/* 返回 {ok:true, results:[...]}，需要已连接 pn */
+async function writeCardToPict(bytes, opts){
+  if(!pn) throw new Error("请先连接读卡器");
+  const sectors = opts.sectors;
+  const trailer = !!opts.trailer;
+  const logFn = opts.log || (()=>{});
+  const progress = opts.progress || (()=>{});
+
+  let card = null;
+  for(let i=0;i<20 && !card;i++){
+    try{ card = await listPassive(pn); }catch(e){ card = null; }
+    if(!card) await new Promise(r=>setTimeout(r,250));
+  }
+  if(!card) throw new Error("未检测到卡片");
+
+  const uid = card.uid;
+  const tg = card.tg || 1;
+  const k123 = deriveS123(uid);
+  const k4 = deriveS4A(uid);
+
+  // S8/S9 密钥：从页面输入框取，填一个另一个自动推
+  const k8in = document.getElementById("k8").value.replace(/[^0-9a-fA-F]/g,"");
+  const k9in = document.getElementById("k9").value.replace(/[^0-9a-fA-F]/g,"");
+  let k8 = k8in.length === 12 ? fromHex(k8in) : null;
+  let k9 = k9in.length === 12 ? fromHex(k9in) : null;
+  if(!k8 && k9) k8 = xor6(k9, T1);
+  if(!k9 && k8) k9 = xor6(k8, T1);
+
+  function keyFor(sector){
+    if(sector >= 1 && sector <= 3) return k123;
+    if(sector === 4) return k4;
+    if(sector === 8) return k8;
+    if(sector === 9) return k9;
+    return null;
+  }
+
+  const nblk = trailer ? 4 : 3;
+  const total = sectors.length * nblk;
+  let done = 0;
+  const results = [];
+  let written = 0;
+
+  for(const sec of sectors){
+    let key = keyFor(sec);
+    if(!key){
+      if(sec === 0){ results.push(`S0: 跳过（厂商块写不了）`); logFn(`S0: 跳过（厂商块）`); continue; }
+      key = [0xFF,0xFF,0xFF,0xFF,0xFF,0xFF];
+      logFn(`S${sec}: 尝试默认密钥 FF FF FF FF FF FF`);
+    }
+    if(!await authKeyA(pn, tg, sec*4, key, uid)){
+      results.push(`S${sec}: 认证失败`);
+      logFn(`S${sec}: 认证失败，跳过`);
+      continue;
+    }
+    logFn(`S${sec}: 认证成功，开始写入`);
+    for(let b=0;b<nblk;b++){
+      const block = sec*4 + b;
+      const data = Array.from(bytes.slice(block*16, block*16+16));
+      const r = await exchange(pn, tg, [0xA0, block, ...data]);
+      if(r.status === 0x00){
+        results.push(`S${sec}B${b}: 写入成功`);
+        written++;
+      }else{
+        results.push(`S${sec}B${b}: 写入失败 status=0x${(r.status||0).toString(16)}`);
+        logFn(`S${sec}B${b}: 写入失败 status=0x${(r.status||0).toString(16)}`);
+      }
+      done++; progress(done/total*100);
+    }
+    // 回读校验
+    for(let b=0;b<nblk;b++){
+      const block = sec*4 + b;
+      const rb = await readBlock(pn, tg, block).catch(()=>null);
+      const want = Array.from(bytes.slice(block*16, block*16+16));
+      if(!rb || rb.length < 16 || rb.join() !== want.join()){
+        results.push(`S${sec}B${b}: 回读不一致`);
+        logFn(`S${sec}B${b}: 回读不一致！`);
+      }
+    }
+  }
+  return { results, written };
+}
+
+document.getElementById("w_confirm").addEventListener("change", () => {
+  document.getElementById("btnWrite").disabled = !document.getElementById("w_confirm").checked || !editBytes;
+});
+
+document.getElementById("btnWrite").addEventListener("click", async () => {
+  if(writing) return;
+  if(!editBytes){ writeLog("请先载入/生成 dump"); return; }
+  if(!pn){ writeLog("请先在「读卡 / 解析」页连接读卡器"); return; }
+  if(!document.getElementById("w_confirm").checked){ writeLog("请先勾选「我确认这是测试卡」"); return; }
+
+  const sectors = document.getElementById("w_sectors").value.split(/[,，\s]+/)
+    .filter(x=>x!=="").map(x=>parseInt(x,10));
+  if(!sectors.length || sectors.some(x=>isNaN(x)||x<1||x>15)){
+    writeLog("扇区格式不对（1~15，逗号分隔）"); return;
+  }
+  const trailer = document.getElementById("w_trailer").checked;
+
+  const warn = trailer
+    ? "将写入扇区 " + sectors.join(",") + " 的数据块和尾块。写错尾块可能锁卡，确定继续？"
+    : "将写入扇区 " + sectors.join(",") + " 的数据块（保留尾块密钥）。确定继续？";
+  if(!confirm(warn)) return;
+
+  writing = true;
+  document.getElementById("btnWrite").disabled = true;
+  document.getElementById("writeLog").textContent = "";
+  setWriteProgress(0);
+  writeLog("开始写卡，UID=" + toHex(pn ? (await listPassive(pn).catch(()=>null))?.uid || [] : []) );
+  try{
+    const R = await writeCardToPict(editBytes, {
+      sectors, trailer,
+      log: (m)=>writeLog(m),
+      progress: (p)=>setWriteProgress(p),
+    });
+    const fail = R.results.filter(x=>/失败|不一致/.test(x));
+    setWriteProgress(100);
+    if(fail.length){
+      writeLog(`完成：写入 ${R.written} 块，${fail.length} 块失败/不一致`, "err");
+    }else{
+      writeLog(`完成：写入 ${R.written} 块，全部成功并回读一致`, "ok");
+    }
+  }catch(e){
+    writeLog("写卡失败: " + e.message, "err");
+  }finally{
+    writing = false;
+    document.getElementById("btnWrite").disabled = !document.getElementById("w_confirm").checked || !editBytes;
+  }
 });
 
 /* tabs */
@@ -770,7 +1315,7 @@ document.querySelectorAll(".tab").forEach(t=>{
     t.classList.add("active");
     const id = t.dataset.tab;
     document.getElementById("tab-reader").classList.toggle("hidden", id!=="reader");
-    document.getElementById("tab-dump").classList.toggle("hidden", id!=="dump");
+    document.getElementById("tab-edit").classList.toggle("hidden", id!=="edit");
   });
 });
 </script>
