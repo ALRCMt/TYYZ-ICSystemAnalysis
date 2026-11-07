@@ -2,6 +2,17 @@
 
 # TYYZ 校园卡系统综合分析报告
 
+这么久了，居然没有人分析研究一下TYYZ的校园卡系统？作为兴趣，利用有限时间，浅要收集了一下TYYZ校园卡系统的相关数据，得出了对湖南桃源第一中学校园卡系统的综合分析报告，涵盖卡片扇区结构、数据解析、交易体系及水控应用等内容  
+
+由于没有coworker，个人信息获取渠道有限，该分析报告含有大量推测与逆向实验结果，肯定存在不准确或不完整之处，希望可以得到更多的信息补充，如果你有有价值的的信息或数据，请提issue或PR，帮助完善本报告，也希望更多贡献者参与分析研究  
+
+特别致谢：  
+<a href="https://grok.com/" ><img src="https://thumb.wikimedia.org/wikipedia/commons/thumb/f/f7/Grok-feb-2025-logo.svg/1280px-Grok-feb-2025-logo.svg.png?utm_source=commons.wikimedia.org&utm_campaign=index&utm_content=thumbnail&_=20250226183559" alt="Grok logo"  height="70"></a>  
+
+<a href="https://deepseek.com/" ><img src="https://upload.wikimedia.org/wikipedia/commons/e/ec/DeepSeek_logo.svg?utm_source=commons.wikimedia.org&utm_campaign=index&utm_content=original" alt="Deepseek logo"  height="50"></a>
+
+请注意，所有数据均为实验与分析所得，请勿用于**商业**或**非法用途**
+
 **目录：**  
 
 一、总览  
@@ -19,19 +30,6 @@
 四、校园IC交易体系分析  
 
 五、实验记录
-
-这么久了，居然没有人分析研究一下TYYZ的校园卡系统？作为兴趣，利用有限时间，浅要收集了一下TYYZ校园卡系统的相关数据，得出了对湖南桃源第一中学校园卡系统的综合分析报告，涵盖卡片扇区结构、数据解析、交易体系及水控应用等内容  
-
-由于没有coworker，个人信息获取渠道有限，该分析报告含有大量推测与逆向实验结果，肯定存在不准确或不完整之处，希望可以得到更多的信息补充，如果你有有价值的的信息或数据，请提issue或PR，帮助完善本报告，也希望更多贡献者参与分析研究  
-
-
-特别致谢：  
-<a href="https://grok.com/" ><img src="https://thumb.wikimedia.org/wikipedia/commons/thumb/f/f7/Grok-feb-2025-logo.svg/1280px-Grok-feb-2025-logo.svg.png?utm_source=commons.wikimedia.org&utm_campaign=index&utm_content=thumbnail&_=20250226183559" alt="Grok logo"  height="70"></a>  
-
-<a href="https://deepseek.com/" ><img src="https://upload.wikimedia.org/wikipedia/commons/e/ec/DeepSeek_logo.svg?utm_source=commons.wikimedia.org&utm_campaign=index&utm_content=original" alt="Deepseek logo"  height="50"></a>
-
-
-请注意，所有数据均为实验与分析所得，请勿用于**商业**或**非法用途**
 
 ## 一、总览
 
