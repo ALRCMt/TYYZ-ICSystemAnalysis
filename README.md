@@ -660,16 +660,18 @@ IC卡挂失后，只能去大食堂二楼**IC卡管理处**取消挂失或者补
 正常情况下，这一数据就是全校IC卡的余额数据。
 
 一个时间段内，开始态与结束态的 IC 卡金额数据记为 $W_{1}$ 和 $W_{2}$，圈存加的金额记为 $A$，开始态与结束态的卡机消费量记为 $R_{1}$ 和 $R_{2}$，则有  
+
  $$
  \sum A=\sum (R_{2}-R_{1})+\sum (W_{2}-W_{1})
  $$
+
 一分钱都不会少，假设有一张卡金额多了，你猜猜会发生什么？
 此外，这里关乎IC系统的纯利润，你猜校方急不急  
 
 
 ## 五、实验与工具
 
-### 综合脚本
+综合脚本
 
 `scripts/dump-edit.py` 是 dump 读写一体的命令行脚本（Python，无第三方依赖），直接修改 dump 字段并自动重算校验：
 
@@ -692,7 +694,7 @@ python scripts/dump-edit.py in.dump -o out.dump --clear-sectors 2,3
 
 自动重算水控2 校验（b0/b1/b5/b15）、水控1 的 CRC 与 B37/B38 镜像、水控2 的 B16/B18 镜像，不需要手工算字节；不带参数运行会显示完整用法。
 
-### Web 工具
+Web 工具
 
 `web/index.html` 是单文件网页，桌面 Chrome / Edge 打开即可（基于 Web Serial + PN532 读卡器）：
 
@@ -700,16 +702,9 @@ python scripts/dump-edit.py in.dump -o out.dump --clear-sectors 2,3
 - **编辑 dump**：表单化修改金额、时间、卡面信息、清空扇区，实时预览，一键下载新 dump；
 - 网页只读卡、不写卡（写卡请用 PCR532，说明见 `web/README.md`）。
 
-启动方式：
-
-```powershell
-cd web
-python -m http.server 8080
-```
-
-浏览器打开 `http://localhost:8080`。
-
-
+直接访问 ：<https://alrcmt.github.io/TYYZ-ICSystemAnalysis/>  
+请注意你需要有USB读卡器，且在桌面端访问，才可读卡  
+安卓系统读卡请使用：[YYZ-CardReader-v0.1.apk](https://github.com/ALRCMt/TYYZ-ICSystemAnalysis/releases/download/v0.1/TYYZ-CardReader-v0.1.apk)
 
 <table >
 <tr>
