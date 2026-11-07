@@ -72,10 +72,6 @@
   .grid2 label{display:flex;flex-direction:column;gap:4px;font-size:12px;color:var(--muted)}
   .grid2 input,.grid2 select{width:100%}
 
-  .bar{height:14px;background:var(--panel2);border:1px solid var(--line);border-radius:999px;overflow:hidden}
-  .bar>div{height:100%;width:0;background:linear-gradient(90deg,#3ddc84,#4da3ff);transition:width .25s}
-  #writeLog{white-space:pre-wrap;font-size:12px;max-height:180px;overflow:auto}
-
   @media (max-width:600px){
     body{padding:14px}
     .panel{padding:12px}
@@ -207,18 +203,6 @@
       </div>
     </div>
 
-    <div class="panel" id="writePanel" style="display:none">
-      <div class="label" style="margin-bottom:8px">写入卡片（整块 16 字节覆盖，仅用于测试卡）</div>
-      <div class="row">
-        <label class="muted"><input type="checkbox" id="w_confirm"> 我确认这是测试卡</label>
-        <label class="muted">扇区 <input id="w_sectors" value="1,2,3,4,8,9" style="width:150px"></label>
-        <label class="muted"><input type="checkbox" id="w_trailer"> 同时写尾块（危险，可能锁卡）</label>
-        <button id="btnWrite" disabled>写入卡片</button>
-      </div>
-      <div class="muted" style="font-size:12px;margin-top:8px">S8/S9 密钥沿用「读卡 / 解析」页的输入框；留空则跳过该扇区。写入的是当前 <b>editBytes</b>（生成后的 dump），每个块 16 字节<b>直接整体覆盖</b>，不关心卡上原内容。</div>
-      <div class="bar" style="margin-top:12px"><div id="writeBar"></div></div>
-      <div id="writeLog" class="muted" style="margin-top:10px"></div>
-    </div>
     <div id="result3"></div>
   </div>
 </div>
@@ -901,14 +885,16 @@ function edWater2(d, yuan, count, counter){
   b[2] = fen & 0xFF; b[3] = (fen>>8)&0xFF;
   if(count !== null && count !== undefined) b[4] = count & 0xFF;
   if(counter !== null && counter !== undefined) b[10] = counter & 0xFF;
+  if(fen > 0 && b[11] === 0) b[11] = 1;   // 余额 > 0 视为已使用卡
+  b[13] = (b[11] === 1) ? ((b[10] + 1) & 0xFF) : b[10];   // 必须在算 b0 之前
   b[1] = (b[2] + b[3] + b[4]) & 0xFF;
   b[5] = (~b[1]) & 0xFF;
   let x = 0; for(let i=1;i<15;i++) x ^= b[i];
   b[0] = x;
-  b[13] = (b[11] === 1) ? ((b[10] + 1) & 0xFF) : b[10];
   let sum = 0; for(let i=1;i<15;i++) sum += b[i];
   b[15] = (~sum) & 0xFF;
   edPut(d,4,0,new Uint8Array(b));
+  edPut(d,4,2,new Uint8Array(b));   // B18 是 B16 的镜像块，必须同步
   return fen;
 }
 
@@ -992,8 +978,6 @@ function edLoad(bytes, name){
   document.getElementById("editHex").value = "";
   edFillForm(parseCard(Array.from(editBase)));
   document.getElementById("btnEditDownload").disabled = true;
-  document.getElementById("writePanel").style.display = "";
-  document.getElementById("btnWrite").disabled = !document.getElementById("w_confirm").checked;
   edMsg("修改下面的字段后点「生成新 dump」");
   render(document.getElementById("result3"), parseCard(Array.from(editBase)));
 }
@@ -1162,150 +1146,6 @@ document.getElementById("btnEditDownload").addEventListener("click", () => {
   document.body.appendChild(a); a.click(); a.remove();
   setTimeout(()=>URL.revokeObjectURL(a.href), 1000);
   edMsg("已下载：" + a.download, "ok");
-});
-
-/* ================= 写卡（PN532 0xA0 写块） ================= */
-let writing = false;
-
-function writeLog(text, cls){
-  const el = document.getElementById("writeLog");
-  const t = new Date().toLocaleTimeString();
-  el.textContent += `[${t}] ${text}\n`;
-  el.scrollTop = el.scrollHeight;
-  if(cls) el.className = "muted " + cls;
-}
-function setWriteProgress(pct){
-  document.getElementById("writeBar").style.width = Math.max(0, Math.min(100, pct)) + "%";
-}
-
-/* 返回 {ok:true, results:[...]}，需要已连接 pn */
-async function writeCardToPict(bytes, opts){
-  if(!pn) throw new Error("请先连接读卡器");
-  const sectors = opts.sectors;
-  const trailer = !!opts.trailer;
-  const logFn = opts.log || (()=>{});
-  const progress = opts.progress || (()=>{});
-
-  let card = null;
-  for(let i=0;i<20 && !card;i++){
-    try{ card = await listPassive(pn); }catch(e){ card = null; }
-    if(!card) await new Promise(r=>setTimeout(r,250));
-  }
-  if(!card) throw new Error("未检测到卡片");
-
-  const uid = card.uid;
-  const tg = card.tg || 1;
-  const k123 = deriveS123(uid);
-  const k4 = deriveS4A(uid);
-
-  // S8/S9 密钥：从页面输入框取，填一个另一个自动推
-  const k8in = document.getElementById("k8").value.replace(/[^0-9a-fA-F]/g,"");
-  const k9in = document.getElementById("k9").value.replace(/[^0-9a-fA-F]/g,"");
-  let k8 = k8in.length === 12 ? fromHex(k8in) : null;
-  let k9 = k9in.length === 12 ? fromHex(k9in) : null;
-  if(!k8 && k9) k8 = xor6(k9, T1);
-  if(!k9 && k8) k9 = xor6(k8, T1);
-
-  function keyFor(sector){
-    if(sector >= 1 && sector <= 3) return k123;
-    if(sector === 4) return k4;
-    if(sector === 8) return k8;
-    if(sector === 9) return k9;
-    return null;
-  }
-
-  const nblk = trailer ? 4 : 3;
-  const total = sectors.length * nblk;
-  let done = 0;
-  const results = [];
-  let written = 0;
-
-  for(const sec of sectors){
-    let key = keyFor(sec);
-    if(!key){
-      if(sec === 0){ results.push(`S0: 跳过（厂商块写不了）`); logFn(`S0: 跳过（厂商块）`); continue; }
-      key = [0xFF,0xFF,0xFF,0xFF,0xFF,0xFF];
-      logFn(`S${sec}: 尝试默认密钥 FF FF FF FF FF FF`);
-    }
-    if(!await authKeyA(pn, tg, sec*4, key, uid)){
-      results.push(`S${sec}: 认证失败`);
-      logFn(`S${sec}: 认证失败，跳过`);
-      continue;
-    }
-    logFn(`S${sec}: 认证成功，开始写入`);
-    for(let b=0;b<nblk;b++){
-      const block = sec*4 + b;
-      const data = Array.from(bytes.slice(block*16, block*16+16));
-      const r = await exchange(pn, tg, [0xA0, block, ...data]);
-      if(r.status === 0x00){
-        results.push(`S${sec}B${b}: 写入成功`);
-        written++;
-      }else{
-        results.push(`S${sec}B${b}: 写入失败 status=0x${(r.status||0).toString(16)}`);
-        logFn(`S${sec}B${b}: 写入失败 status=0x${(r.status||0).toString(16)}`);
-      }
-      done++; progress(done/total*100);
-    }
-    // 回读校验
-    for(let b=0;b<nblk;b++){
-      const block = sec*4 + b;
-      const rb = await readBlock(pn, tg, block).catch(()=>null);
-      const want = Array.from(bytes.slice(block*16, block*16+16));
-      if(!rb || rb.length < 16 || rb.join() !== want.join()){
-        results.push(`S${sec}B${b}: 回读不一致`);
-        logFn(`S${sec}B${b}: 回读不一致！`);
-      }
-    }
-  }
-  return { results, written };
-}
-
-document.getElementById("w_confirm").addEventListener("change", () => {
-  document.getElementById("btnWrite").disabled = !document.getElementById("w_confirm").checked || !editBytes;
-});
-
-document.getElementById("btnWrite").addEventListener("click", async () => {
-  if(writing) return;
-  if(!editBytes){ writeLog("请先载入/生成 dump"); return; }
-  if(!pn){ writeLog("请先在「读卡 / 解析」页连接读卡器"); return; }
-  if(!document.getElementById("w_confirm").checked){ writeLog("请先勾选「我确认这是测试卡」"); return; }
-
-  const sectors = document.getElementById("w_sectors").value.split(/[,，\s]+/)
-    .filter(x=>x!=="").map(x=>parseInt(x,10));
-  if(!sectors.length || sectors.some(x=>isNaN(x)||x<1||x>15)){
-    writeLog("扇区格式不对（1~15，逗号分隔）"); return;
-  }
-  const trailer = document.getElementById("w_trailer").checked;
-
-  const warn = trailer
-    ? "将写入扇区 " + sectors.join(",") + " 的数据块和尾块。写错尾块可能锁卡，确定继续？"
-    : "将写入扇区 " + sectors.join(",") + " 的数据块（保留尾块密钥）。确定继续？";
-  if(!confirm(warn)) return;
-
-  writing = true;
-  document.getElementById("btnWrite").disabled = true;
-  document.getElementById("writeLog").textContent = "";
-  setWriteProgress(0);
-  writeLog("开始写卡，UID=" + toHex(pn ? (await listPassive(pn).catch(()=>null))?.uid || [] : []) );
-  try{
-    const R = await writeCardToPict(editBytes, {
-      sectors, trailer,
-      log: (m)=>writeLog(m),
-      progress: (p)=>setWriteProgress(p),
-    });
-    const fail = R.results.filter(x=>/失败|不一致/.test(x));
-    setWriteProgress(100);
-    if(fail.length){
-      writeLog(`完成：写入 ${R.written} 块，${fail.length} 块失败/不一致`, "err");
-    }else{
-      writeLog(`完成：写入 ${R.written} 块，全部成功并回读一致`, "ok");
-    }
-  }catch(e){
-    writeLog("写卡失败: " + e.message, "err");
-  }finally{
-    writing = false;
-    document.getElementById("btnWrite").disabled = !document.getElementById("w_confirm").checked || !editBytes;
-  }
 });
 
 /* tabs */

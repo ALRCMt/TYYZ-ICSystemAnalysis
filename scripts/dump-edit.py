@@ -128,6 +128,11 @@ def set_water2(d, yuan, count=None, counter=None):
         if not 0 <= counter <= 255:
             raise ValueError("--water2-counter 范围 0~255")
         b[10] = counter
+    # 余额 > 0 视为已使用卡（必须在算 b0 之前设置 b11）
+    if fen > 0 and b[11] == 0:
+        b[11] = 1
+    # b13 = b10+1（已用卡）；初始未用卡时 b11=0 则 b13 = b10（必须在算 b0 之前）
+    b[13] = (b[10] + 1) & 0xFF if b[11] == 1 else b[10]
     # b1 = (b2 + b3 + b4) & 0xFF
     b[1] = (b[2] + b[3] + b[4]) & 0xFF
     # b5 = ~b1（必须在算 b0 之前，因为 b0 要异或 b1..b14）
@@ -137,11 +142,10 @@ def set_water2(d, yuan, count=None, counter=None):
     for i in range(1, 15):
         x ^= b[i]
     b[0] = x
-    # b13 = b10+1（已用卡）；初始未用卡时 b11=0 则 b13 = b10
-    b[13] = (b[10] + 1) & 0xFF if b[11] == 1 else b[10]
     # b15 = ~sum(b1..b14)
     b[15] = (~sum(b[1:15])) & 0xFF
     put_blk(d, 4, 0, b)
+    put_blk(d, 4, 2, b)   # B18 是 B16 的镜像块，必须同步
     return fen
 
 
