@@ -6,15 +6,15 @@
 
 由于没有coworker，个人信息获取渠道有限，该分析报告含有大量推测与逆向实验结果，肯定存在不准确或不完整之处，希望可以得到更多的信息补充，如果你有有价值的的信息或数据，请提issue或PR，帮助完善本报告，也希望更多贡献者参与分析研究  
 
-**特别致谢，强力助手**
+**特别致谢，助手团**
 
-数据分析：
+数据分析：  
 <a href="https://grok.com/" ><img src="./imgs/Grok-feb-2025-logo.svg" alt="Grok logo"  height="70"></a>  
 
-文档编写、数据分析：
+文档编写、数据分析：  
 <a href="https://deepseek.com/" ><img src="./imgs/DeepSeek_logo.svg" alt="Deepseek logo"  height="50"></a>
 
-绘图：
+绘图：  
 <a href="https://claude.ai/" ><img src="./imgs/Claude_AI_logo.svg" alt="Claude logo"  height="48"></a>
 
 
