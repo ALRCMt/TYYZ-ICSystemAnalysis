@@ -20,18 +20,21 @@
 
 请注意，所有数据均为实验与分析所得，请勿用于**商业**或**非法用途**
 
-**目录：**  
-一、总览  
-二、扇区结构与数据解析  
-（一）Sector 0：制造商/UID  
-（二）Sector 1：用户信息  
-（三）Sector 2-3：消费钱包  
-（四）Sector 4：水控2  
-（五）Sector 8-9：水控1  
-（六）其它扇区  
-三、水控区专项分析  
-四、校园IC交易体系分析  
-五、实验
+**目录：**
+
+- [一、总览](#一总览)
+- [二、扇区结构与数据解析](#二扇区结构与数据解析)
+  - [（一）Sector 0：制造商 / UID](#sector-0--制造商--uid)
+  - [（二）Sector 1：用户信息](#sector-1--用户信息)
+  - [（三）Sector 2-3：消费钱包](#sector-2-3--消费钱包两条相邻交易记录)
+  - [（四）Sector 4：水控2](#sector-4--水控2)
+  - [（五）Sector 8-9：水控1](#sector-8-9--水控1)
+  - [（六）其它扇区](#其它扇区)
+- [三、水控区专项分析](#三水控区专项分析)
+- [四、校园IC交易体系分析](#四校园ic交易体系分析)
+- [五、实验与工具](#五实验与工具)
+  - [综合脚本](#综合脚本)
+  - [Web 工具](#web-工具)
 
 ## 一、总览
 
@@ -597,7 +600,7 @@ IC卡挂失后，只能去大食堂二楼**IC卡管理处**取消挂失或者补
 " colspan=2>流程图</th>
 </tr>
 <tr >
-<th ><img  width="2000px" src="./imgs/card_swipe_deduction_flow_v2.svg"></th>
+<th ><img  width="1000px" src="./imgs/card_swipe_deduction_flow_v2.svg"></th>
 </tr>
 </table>
 
@@ -661,14 +664,141 @@ IC卡挂失后，只能去大食堂二楼**IC卡管理处**取消挂失或者补
  \sum A=\sum (R_{2}-R_{1})+\sum (W_{2}-W_{1})
  \]
 一分钱都不会少，假设有一张卡金额多了，你猜猜会发生什么？
-此外，IC系统纯的利润来自于
+此外，这里关乎IC系统的纯利润，你猜校方急不急  
+
+
+## 五、实验与工具
+
+### 综合脚本
+
+`scripts/dump-edit.py` 是 dump 读写一体的命令行脚本（Python，无第三方依赖），直接修改 dump 字段并自动重算校验：
+
+```powershell
+# 查看内容
+python scripts/dump-edit.py dumps/演示数据-张三.dump --show
+
+# 改水控1 / 水控2 余额
+python scripts/dump-edit.py in.dump -o out.dump --water1 20 --water2 5
+
+# 改消费钱包 / 模拟消费 / 模拟充值
+python scripts/dump-edit.py in.dump -o out.dump --balance 300 --cash 0.5 --day 12.5 --time "2026-11-07 12:00:00"
+python scripts/dump-edit.py in.dump -o out.dump --spend 3.0
+python scripts/dump-edit.py in.dump -o out.dump --topup 100
+
+# 改卡面信息 / 清空扇区
+python scripts/dump-edit.py in.dump -o out.dump --name 李四 --cardno 654321 --role 0x0A --date 2026-09-01
+python scripts/dump-edit.py in.dump -o out.dump --clear-sectors 2,3
+```
+
+自动重算水控2 校验（b0/b1/b5/b15）、水控1 的 CRC 与 B37/B38 镜像、水控2 的 B16/B18 镜像，不需要手工算字节；不带参数运行会显示完整用法。
+
+### Web 工具
+
+`web/index.html` 是单文件网页，桌面 Chrome / Edge 打开即可（基于 Web Serial + PN532 读卡器）：
+
+- **读卡 / 解析**：读取 UID、卡号/姓名/开卡日期、消费钱包、水控2；水控1 需在页面填入 S8/S9 密钥；也支持直接上传 `.dump` 或粘贴 1024 字节 hex 解析；
+- **编辑 dump**：表单化修改金额、时间、卡面信息、清空扇区，实时预览，一键下载新 dump；
+- 网页只读卡、不写卡（写卡请用 PCR532，说明见 `web/README.md`）。
+
+启动方式：
+
+```powershell
+cd web
+python -m http.server 8080
+```
+
+浏览器打开 `http://localhost:8080`。
 
 
 
+<table >
+<tr>
+<th>实验组卡</th>
+<th>实验目的</th>
+</tr>
+<tr>
+<td>[0489]</td>
+<td rowspan="2">确定卡机读卡所需扇区</td>
+</tr>
+<tr>
+<td>[01489]</td>
+</tr>
+<tr>
+<td>[1]姓名更改</td>
+<td>确定卡机识别卡方式</td>
+</tr>
+<tr>
+<td>[655.35，15]</td>
+<td rowspan="5">确定卡机识别卡方式</td>
+</tr>
+<tr>
+<td>[200，15]</td>
+</tr>
+<tr>
+<td>[100，15]</td>
+</tr>
+<tr>
+<td>[50，15]</td>
+</tr>
+<tr>
+<td>[16，15]</td>
+</tr>
+<tr>
+<td>[14，15]</td>
+<td>检查检验函数1正确</td>
+</tr>
+<tr>
+<td>[200，0]</td>
+<td rowspan="2">确定卡机金额操作方式
+检查校验函数2正确</td>
+</tr>
+<tr>
+<td>[0，200]</td>
+</tr>
+<tr>
+<td>锁[4]</td>
+<td rowspan="2">测试水机1、卡机识别
+测试水机2、卡机识别</td>
+</tr>
+<tr>
+<td>锁[9]</td>
+</tr>
+<tr>
+<td>[23].0</td>
+<td rowspan="2">确定[2-3]空数据格式
+确定卡机读卡步骤</td>
+</tr>
+<tr>
+<td>仅[1]</td>
+</tr>
+<tr>
+<td>水控1无检验</td>
+<td rowspan="4">进行中</td>
+</tr>
+<tr>
+<td>水控2无检验</td>
+</tr>
+<tr>
+<td>[4]坏数据</td>
+</tr>
+<tr>
+<td>[9]坏数据</td>
+</tr>
 
+</table>
 
+**实验1**   
+目的：明确卡机是否可存储消费记录  
+设计：卡片在离线卡机消费，并立即在在线卡机消费以校准时间，如果消费记录出现缺失，则卡机不会存储消费记录；若无，则相反  
+结果：已完成，消费记录存在，时间正常  
+有待进一步验证  
 
+**实验2**  
+目的：明确每台卡机是否在[23]留编号，编号是什么  
+设计：使用多个预先设计好的，余额依次相差一段数值的IC，在不同卡机按照顺序消费，最后读取每张卡的[2-3]  
+结果：进行中
 
-
-
-五、实验
+**实验3**
+目的：获取卡机身份识别相关信息  
+设计：有意挂失卡片，使用挂失卡在各卡机刷卡查看效果，补办卡后读取数据与原卡对比  
+结果：已完成，每台卡机都会检查数据库挂失状态，补办卡与旧卡UID不同，卡号与姓名为同等识别信息  
