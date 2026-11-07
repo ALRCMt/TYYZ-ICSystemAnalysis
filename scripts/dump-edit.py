@@ -154,7 +154,7 @@ def wallet_records(d):
     for s in (2, 3):
         b0, b1 = blk(d, s, 0), blk(d, s, 1)
         recs[s] = {
-            "cash": b0[3],
+            "cash": int.from_bytes(b0[0:4], "big"),
             "balance": int.from_bytes(b0[4:8], "big"),
             "seq": int.from_bytes(b0[8:12], "big"),
             "time": bytes(b1[0:6]),
@@ -166,7 +166,7 @@ def wallet_records(d):
 def write_wallet_record(d, sector, rec):
     b0 = bytearray(blk(d, sector, 0))
     b1 = bytearray(blk(d, sector, 1))
-    b0[3] = rec["cash"] & 0xFF
+    b0[0:4] = (rec["cash"] & 0xFFFFFFFF).to_bytes(4, "big")
     b0[4:8] = (rec["balance"] & 0xFFFFFFFF).to_bytes(4, "big")
     b0[8:12] = (rec["seq"] & 0xFFFFFFFF).to_bytes(4, "big")
     b1[0:6] = rec["time"]
@@ -189,8 +189,8 @@ def set_wallet(d, balance_yuan=None, cash_yuan=None, day_yuan=None,
         rec["balance"] = yuan_to_jiao(balance_yuan)
     if cash_yuan is not None:
         cash = yuan_to_jiao(cash_yuan)
-        if not 0 <= cash <= 255:
-            raise ValueError("现金范围 0 ~ 25.5 元")
+        if not 0 <= cash <= 0xFFFFFFFF:
+            raise ValueError("现金不能为负")
         rec["cash"] = cash
     if day_yuan is not None:
         day = yuan_to_jiao(day_yuan)
@@ -336,7 +336,7 @@ def main():
 
     g2 = ap.add_argument_group("消费钱包")
     g2.add_argument("--balance", type=float, help="余额（元）")
-    g2.add_argument("--cash", type=float, help="现金（元，0~25.5）")
+    g2.add_argument("--cash", type=float, help="现金/补贴（元，4 字节大端，可超过 25.5）")
     g2.add_argument("--day", type=float, help="当日累计（元）")
     g2.add_argument("--time", help='时间 "YYYY-MM-DD HH:MM:SS"')
     g2.add_argument("--seq", type=int, help="记录序号 B")

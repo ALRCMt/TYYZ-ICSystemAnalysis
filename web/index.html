@@ -177,7 +177,7 @@
           </select>
         </label>
         <label>余额（元）<input id="e_bal" type="text"></label>
-        <label>现金（元）<input id="e_cash" type="text" placeholder="0 ~ 25.5"></label>
+        <label>现金（元）<input id="e_cash" type="text" placeholder="可超过 25.5"></label>
         <label>当日累计（元）<input id="e_day" type="text"></label>
         <label>时间<input id="e_time" type="text" placeholder="YYYY-MM-DD HH:MM:SS"></label>
         <label>记录序号 B<input id="e_seq" type="text"></label>
@@ -266,7 +266,7 @@ function parseCard(d){
   for(const s of [2,3]){
     const w0 = blk(s,0), w1 = blk(s,1);
     r.wallet[s] = {
-      cash: w0[3],
+      cash: be32(w0, 0),
       balance: be32(w0,4),
       seq: be32(w0,8),
       time: hhmmss(w1),
@@ -884,6 +884,11 @@ let lastReadDump = null;
 
 const edMsgEl = () => document.getElementById("editMsg");
 function edMsg(text, cls){ const el = edMsgEl(); el.textContent = text; el.className = cls || "muted"; }
+function edClamp(v, lo, hi, def){
+  const n = Number(v);
+  if(isNaN(n)) return def === undefined ? lo : def;
+  return Math.min(hi, Math.max(lo, Math.round(n)));
+}
 function edBlk(d,s,b){ return d.slice(s*64+b*16, s*64+b*16+16); }
 function edPut(d,s,b,arr){ d.set(arr, s*64+b*16); }
 function edXor(data){ let x=0; for(const b of data) x ^= b; return x; }
@@ -919,8 +924,7 @@ function gbkEncode(str){
 }
 
 function edWater1(d, yuan){
-  const fen = Math.round(Number(yuan) * 100);
-  if(!(fen >= 0 && fen <= 65535)) throw new Error("水控1 金额范围 0 ~ 655.35 元");
+  const fen = edClamp(Number(yuan) * 100, 0, 65535, 0);
   const bal = [(fen>>8)&0xFF, fen&0xFF];
   const crc = crc16ccitt(bal) ^ 0x20F5;
   const blk = new Uint8Array([0x10,0xAC,0x0C,0xAF, bal[0],bal[1], (crc>>8)&0xFF, crc&0xFF, 0,0,0,0,0,0,0,0]);
@@ -929,12 +933,11 @@ function edWater1(d, yuan){
 }
 
 function edWater2(d, yuan, count, counter){
-  const fen = Math.round(Number(yuan) * 100);
-  if(!(fen >= 0 && fen <= 65535)) throw new Error("水控2 金额范围 0 ~ 655.35 元");
+  const fen = edClamp(Number(yuan) * 100, 0, 65535, 0);
   const b = Array.from(edBlk(d,4,0));
   b[2] = fen & 0xFF; b[3] = (fen>>8)&0xFF;
-  if(count !== null && count !== undefined) b[4] = count & 0xFF;
-  if(counter !== null && counter !== undefined) b[10] = counter & 0xFF;
+  if(count !== null && count !== undefined) b[4] = edClamp(count, 0, 255, 0);
+  if(counter !== null && counter !== undefined) b[10] = edClamp(counter, 0, 255, 0);
   if(fen > 0 && b[11] === 0) b[11] = 1;   // 余额 > 0 视为已使用卡
   b[13] = (b[11] === 1) ? ((b[10] + 1) & 0xFF) : b[10];   // 必须在算 b0 之前
   b[1] = (b[2] + b[3] + b[4]) & 0xFF;
@@ -959,7 +962,7 @@ function edWalletRecs(d){
   const out = {};
   for(const s of [2,3]){
     const b0 = edBlk(d,s,0), b1 = edBlk(d,s,1);
-    out[s] = { cash: b0[3], balance: be32(Array.from(b0),4), seq: be32(Array.from(b0),8),
+    out[s] = { cash: be32(Array.from(b0),0), balance: be32(Array.from(b0),4), seq: be32(Array.from(b0),8),
                time: [b1[0],b1[1],b1[2],b1[3],b1[4],b1[5]], day: be16(Array.from(b1),9) };
   }
   return out;
@@ -968,7 +971,11 @@ function edWalletRecs(d){
 function edWriteWallet(d, sector, rec){
   const b0 = Array.from(edBlk(d,sector,0));
   const b1 = Array.from(edBlk(d,sector,1));
-  b0[3] = rec.cash & 0xFF;
+  const cash = rec.cash >>> 0;
+  b0[0] = (cash >>> 24) & 0xFF;
+  b0[1] = (cash >>> 16) & 0xFF;
+  b0[2] = (cash >>> 8) & 0xFF;
+  b0[3] = cash & 0xFF;
   const bal = rec.balance >>> 0, seq = rec.seq >>> 0;
   b0[4]=(bal>>>24)&0xFF; b0[5]=(bal>>>16)&0xFF; b0[6]=(bal>>>8)&0xFF; b0[7]=bal&0xFF;
   b0[8]=(seq>>>24)&0xFF; b0[9]=(seq>>>16)&0xFF; b0[10]=(seq>>>8)&0xFF; b0[11]=seq&0xFF;
@@ -996,16 +1003,15 @@ function edSetInfo(d, name, cardno, role, dateStr){
   const b1 = Array.from(edBlk(d,1,1));
   if(name){
     const nb = gbkEncode(name);
-    if(nb.length > 8) throw new Error("姓名超过 8 字节（约 4 个汉字）");
-    for(let i=0;i<8;i++) b0[5+i] = i < nb.length ? nb[i] : 0x20;
+    const use = nb.slice(0, 8);   // 超长直接截断到 8 字节
+    for(let i=0;i<8;i++) b0[5+i] = i < use.length ? use[i] : 0x20;
   }
   if(cardno !== null && cardno !== undefined){
-    if(!(cardno >= 0 && cardno <= 0xFFFFFF)) throw new Error("卡号范围 0 ~ 16777215");
-    b0[1] = (cardno>>16)&0xFF; b0[2] = (cardno>>8)&0xFF; b0[3] = cardno&0xFF;
+    const cn = edClamp(cardno, 0, 0xFFFFFF, 0);
+    b0[1] = (cn>>16)&0xFF; b0[2] = (cn>>8)&0xFF; b0[3] = cn&0xFF;
   }
   if(role !== null && role !== undefined){
-    if(!(role >= 0 && role <= 255)) throw new Error("级别范围 0 ~ 255");
-    b0[4] = role & 0xFF;
+    b0[4] = edClamp(role, 0, 255, 0);
   }
   if(dateStr){
     const db = edDateBytes(dateStr);
@@ -1083,14 +1089,12 @@ function edApply(){
       const newest = recs[2].seq > recs[3].seq ? 2 : 3;
       const target = newest === 2 ? 3 : 2;
       const rec = Object.assign({}, recs[newest]);
-      const delta = Math.round(Number(spend !== "" ? spend : topup) * 10);
-      if(!(delta >= 0)) throw new Error("金额不能为负");
+      const delta = edClamp(Number(spend !== "" ? spend : topup) * 10, 0, 0xFFFFFFFF, 0);
       if(spend !== ""){
-        rec.balance -= delta;
-        if(rec.balance < 0) throw new Error("余额不足，扣款后为负");
-        rec.day += delta;
+        rec.balance = Math.max(0, rec.balance - delta);
+        rec.day = edClamp(rec.day + delta, 0, 0xFFFF, rec.day);
       }else{
-        rec.balance += delta;
+        rec.balance = edClamp(rec.balance + delta, 0, 0xFFFFFFFF, rec.balance);
       }
       rec.seq = Math.max(recs[2].seq, recs[3].seq) + 1;
       const tv = document.getElementById("e_time").value.trim();
@@ -1108,14 +1112,11 @@ function edApply(){
       const day = document.getElementById("e_day").value.trim();
       const timev = document.getElementById("e_time").value.trim();
       const seqv = document.getElementById("e_seq").value.trim();
-      if(bal !== "") rec.balance = Math.round(Number(bal) * 10);
-      if(cash !== "") rec.cash = Math.round(Number(cash) * 10);
-      if(day !== "") rec.day = Math.round(Number(day) * 10);
+      if(bal !== "") rec.balance = edClamp(Number(bal) * 10, 0, 0xFFFFFFFF, rec.balance);
+      if(cash !== "") rec.cash = edClamp(Number(cash) * 10, 0, 0xFFFFFFFF, rec.cash);
+      if(day !== "") rec.day = edClamp(Number(day) * 10, 0, 0xFFFF, rec.day);
       if(timev !== "") rec.time = edTimeBytes(timev);
-      if(seqv !== "") rec.seq = parseInt(seqv,10);
-      if(rec.balance < 0) throw new Error("余额不能为负");
-      if(rec.cash < 0 || rec.cash > 255) throw new Error("现金范围 0 ~ 25.5 元");
-      if(rec.day < 0 || rec.day > 65535) throw new Error("当日累计范围 0 ~ 6553.5 元");
+      if(seqv !== "") rec.seq = edClamp(seqv, 0, 0xFFFFFFFF, rec.seq);
       edWriteWallet(d, sector, rec);
       changes.push("钱包（S" + sector + "）");
     }
