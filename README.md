@@ -704,7 +704,7 @@ Web 工具
 
 直接访问 ：<https://alrcmt.github.io/TYYZ-ICSystemAnalysis/>  
 请注意你需要有USB读卡器，且在桌面端访问，才可读卡  
-安卓系统读卡请使用：[YYZ-CardReader-v0.1.apk](https://github.com/ALRCMt/TYYZ-ICSystemAnalysis/releases/download/v0.1/TYYZ-CardReader-v0.1.apk)
+安卓系统读卡请使用：[YYZ-CardReader-v0.2.apk](https://github.com/ALRCMt/TYYZ-ICSystemAnalysis/releases/download/v0.1/TYYZ-CardReader-v0.2.apk)
 
 <table >
 <tr>

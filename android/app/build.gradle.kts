@@ -12,8 +12,8 @@ android {
         applicationId = "top.tyyz2415.cardreader"
         minSdk = 21
         targetSdk = 34
-        versionCode = 1
-        versionName = "0.1-readonly"
+        versionCode = 2
+        versionName = "0.2-readonly"
     }
 
     buildTypes {
@@ -38,4 +38,5 @@ val syncWebAssets by tasks.registering(Copy::class) {
     into(layout.projectDirectory.dir("src/main/assets"))
 }
 tasks.named("preBuild") { dependsOn(syncWebAssets) }
+
 

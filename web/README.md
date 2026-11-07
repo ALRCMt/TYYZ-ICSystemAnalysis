@@ -24,6 +24,13 @@ python -m http.server 8080
 
 Chrome 打开 `http://localhost:8080`。
 
+## 默认示例
+
+打开页面会自动载入示例数据（dumps/演示数据-张三.dump，张某某）：
+
+- 「读卡 / 解析」页直接显示示例卡信息；
+- 「编辑 dump」页也已预填，可直接修改并下载，不需要先准备文件。
+
 ## 使用
 
 1. **连接读卡器** → 选 `USB-SERIAL CH340 (COM3)`；
@@ -67,3 +74,4 @@ KeyB(S4)   = A2 02 0B C0 71 8D
 S9 KeyA    = S8 KeyA ^ 00 01 20 00 00 04
 S8/S9 KeyB = KeyA ^ 60 84 2D 00 00 0C
 ```
+
