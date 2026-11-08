@@ -284,6 +284,7 @@ function parseCard(d){
   const t0=w2[0], t1=w2[1], t5=w2[5], t10=w2[10], t13=w2[13], t15=w2[15];
   let xx=0; for(let i=1;i<15;i++) xx^=w2[i];
   const sm=(~(w2.slice(1,15).reduce((a,b)=>a+b,0)))&0xFF;
+  r.w2Empty = w2.every(v=>v===0);
   r.w2 = {
     raw: w2,
     balance: le16(w2,2),
@@ -299,6 +300,9 @@ function parseCard(d){
     r.w1 = { raw:b37, balance: bal, crc, calc: crc16ccitt(b37.slice(4,6)) ^ 0x20F5,
              ok: crc === (crc16ccitt(b37.slice(4,6)) ^ 0x20F5),
              mirror: toHexStr(blk(9,2)) === toHexStr(b37) };
+  }else{
+    const blank = blk(9,0).every(v=>v===0) && b37.every(v=>v===0) && blk(9,2).every(v=>v===0);
+    r.w1Reason = blank ? "empty" : "bad";
   }
 
   // 密钥
@@ -336,14 +340,17 @@ function render(el, r){
       <div class="muted">主余额 ${jiao(w.balance)} + 现金 ${jiao(w.cash)}</div></div>
     <div class="card"><div class="label">水控2（Sector 4）</div>
       <div class="big">${(r.w2.balance/100).toFixed(2)} 元</div>
-      <div class="muted">${r.w2.ok?'<span class="ok">校验通过</span>':'<span class="err">校验失败</span>'} · b10=${r.w2.b10.toString(16).toUpperCase().padStart(2,"0")}</div></div>`;
+      <div class="muted">${r.w2Empty ? '空（Sector 4 数据全 0，未初始化）' : (r.w2.ok?'<span class="ok">校验通过</span>':'<span class="err">校验失败</span>') + ' · b10=' + r.w2.b10.toString(16).toUpperCase().padStart(2,"0")}</div></div>`;
   if(r.w1){
     h += `<div class="card"><div class="label">水控1（Sector 9）</div>
       <div class="big">${(r.w1.balance/100).toFixed(2)} 元</div>
       <div class="muted">${r.w1.ok?'<span class="ok">CRC 通过</span>':'<span class="err">CRC 失败</span>'} · ${r.w1.mirror?'B37=B38':'<span class="warn">B37≠B38</span>'}</div></div>`;
   }else{
+    const why = r.w1Reason === "bad"
+      ? "结构不符（Sector 9 数据异常）"
+      : "无数据（Sector 9 为空：离线 dump 本身没有数据；读卡时可能未填 S8/S9 密钥）";
     h += `<div class="card"><div class="label">水控1（Sector 9）</div>
-      <div class="big muted">—</div><div class="muted">未读取（缺 S8/S9 密钥）</div></div>`;
+      <div class="big muted">—</div><div class="muted">${why}</div></div>`;
   }
   h += `</div>`;
 
