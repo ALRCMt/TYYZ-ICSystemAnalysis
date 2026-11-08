@@ -33,8 +33,6 @@
 - [三、水控区专项分析](#三水控区专项分析)
 - [四、校园IC交易体系分析](#四校园ic交易体系分析)
 - [五、实验与工具](#五实验与工具)
-  - [综合脚本](#综合脚本)
-  - [Web 工具](#web-工具)
 
 ## 一、总览
 
@@ -703,7 +701,7 @@ Web 工具
 
 直接访问 ：<https://alrcmt.github.io/TYYZ-ICSystemAnalysis/>  
 请注意你需要有USB读卡器，且在桌面端访问，才可读卡  
-安卓系统读卡请使用：[YYZ-CardReader-v0.4.apk](https://github.com/ALRCMt/TYYZ-ICSystemAnalysis/releases/download/v0.4/TYYZ-CardReader-v0.4.apk)
+安卓系统读卡请使用：[YYZ-CardReader](https://github.com/ALRCMt/TYYZ-ICSystemAnalysis/releases)
 
 <table >
 <tr>
